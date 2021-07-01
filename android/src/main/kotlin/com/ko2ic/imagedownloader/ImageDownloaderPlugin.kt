@@ -236,12 +236,12 @@ class ImageDownloaderPlugin(
                 }
             }
 
-            if (inPublicDir) {
-                request.setDestinationInExternalPublicDir(directory, tempSubDirectory)
-            } else {
+//            if (inPublicDir) {
+//                request.setDestinationInExternalPublicDir(directory, tempSubDirectory)
+//            } else {
                 TemporaryDatabase(context).writableDatabase.delete(TABLE_NAME, null, null)
                 request.setDestinationInExternalFilesDir(context, directory, tempSubDirectory)
-            }
+//            }
 
             val downloader = Downloader(context, request)
             this.downloader = downloader
@@ -269,11 +269,13 @@ class ImageDownloaderPlugin(
                 result.error(it.code, it.message, null)
             }, onComplete = {
 
-                val file = if (inPublicDir) {
-                    File("${Environment.getExternalStoragePublicDirectory(directory)}/$tempSubDirectory")
-                } else {
-                    File("${context.getExternalFilesDir(directory)}/$tempSubDirectory")
-                }
+//                val file = if (inPublicDir) {
+//                    File("${Environment.getExternalStoragePublicDirectory(directory)}/$tempSubDirectory")
+//                } else {
+//                    File("${context.getExternalFilesDir(directory)}/$tempSubDirectory")
+//                }
+
+                val file = File("${context.getExternalFilesDir(directory)}/$tempSubDirectory")
 
                 if (!file.exists()) {
                     result.error("save_error", "Couldn't save ${file.absolutePath ?: tempSubDirectory} ", null)
@@ -290,11 +292,12 @@ class ImageDownloaderPlugin(
                         else -> uri.lastPathSegment?.split("/")?.last() ?: "file"
                     }
 
-                    val newFile = if (inPublicDir) {
-                        File("${Environment.getExternalStoragePublicDirectory(directory)}/$fileName")
-                    } else {
-                        File("${context.getExternalFilesDir(directory)}/$fileName")
-                    }
+//                    val newFile = if (inPublicDir) {
+//                        File("${Environment.getExternalStoragePublicDirectory(directory)}/$fileName")
+//                    } else {
+//                        File("${context.getExternalFilesDir(directory)}/$fileName")
+//                    }
+                    val newFile = File("${context.getExternalFilesDir(directory)}/$fileName")
 
                     file.renameTo(newFile)
                     val newMimeType = mimeType
@@ -333,20 +336,35 @@ class ImageDownloaderPlugin(
             contentValues.put(MediaStore.Images.ImageColumns.SIZE, size)
             if (inPublicDir) {
 
-                context.contentResolver.insert(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Images.Media.insertImage(
+                        context.contentResolver,
+                        path,
+                        name,
+                        "desc"
+                    )
+                    //刷新相册
+                    context.sendBroadcast(Intent(
+                        Intent.ACTION_MEDIA_SCANNER_SCAN_FILE,
+                        Uri.fromFile(File(file.path))
+                    ))
+                    return ""
+                } else {
+                    context.contentResolver.insert(
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                         contentValues
-                )
-                return context.contentResolver.query(
+                    )
+                    return context.contentResolver.query(
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                         arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA),
                         "${MediaStore.Images.Media.DATA}=?",
                         arrayOf(file.absolutePath),
                         null
-                ).use {
-                    checkNotNull(it) { "${file.absolutePath} is not found." }
-                    it.moveToFirst()
-                    it.getString(it.getColumnIndex(MediaStore.Images.Media._ID))
+                    ).use {
+                        checkNotNull(it) { "${file.absolutePath} is not found." }
+                        it.moveToFirst()
+                        it.getString(it.getColumnIndex(MediaStore.Images.Media._ID))
+                    }
                 }
             } else {
                 val db = TemporaryDatabase(context)
